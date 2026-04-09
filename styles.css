@@ -1,0 +1,127 @@
+:root {
+  color-scheme: light;
+  --bg: #fffaf3;
+  --surface: rgba(255, 255, 255, 0.92);
+  --border: #ecd8b8;
+  --text: #2f1c13;
+  --muted: #6d5949;
+  --accent: #8b4117;
+  --accent-soft: #f6e6cd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Noto Sans KR", "Malgun Gothic", sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(198, 112, 43, 0.14), transparent 32%),
+    linear-gradient(180deg, #fffdf9 0%, var(--bg) 100%);
+  color: var(--text);
+  line-height: 1.75;
+}
+
+.container {
+  width: min(920px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 44px 0 72px;
+}
+
+.hero {
+  margin-bottom: 24px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(250, 239, 216, 0.92)),
+    var(--surface);
+  box-shadow: 0 18px 44px rgba(72, 41, 18, 0.08);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+h1,
+h2 {
+  margin: 0 0 12px;
+  color: var(--accent);
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+
+.meta {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.lead {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+section {
+  margin-top: 18px;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(72, 41, 18, 0.05);
+}
+
+p,
+ul {
+  margin: 0;
+}
+
+p + p,
+p + ul,
+ul + p {
+  margin-top: 12px;
+}
+
+ul {
+  padding-left: 20px;
+}
+
+li + li {
+  margin-top: 6px;
+}
+
+a {
+  color: var(--accent);
+}
+
+.placeholder {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .container {
+    width: min(100% - 20px, 920px);
+    padding: 24px 0 44px;
+  }
+
+  .hero,
+  section {
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
+}
