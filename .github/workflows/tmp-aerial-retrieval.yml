@@ -15,76 +15,49 @@ permissions:
 jobs:
   retrieve:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Probe VWorld historical imagery endpoints
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: browser-actions/setup-chrome@v1
+      - name: Install browser helper
+        run: pip install --quiet selenium requests pillow
+      - name: Probe imagery services and capture map pages
         shell: bash
         run: |
           set -u
           mkdir -p out
           python3 - <<'PY'
-          import os, ssl, urllib.request, urllib.parse, urllib.error, json, math
+          import concurrent.futures, hashlib, json, math, os, re, time
+          from pathlib import Path
+          import requests
 
-          out='out'
+          out=Path('out')
           lon=126.9327033
           lat=37.4709232
           bbox=(lon-0.002,lat-0.002,lon+0.002,lat+0.002)
-          keys=[
-              '3XE3C10E-82B7-3E7F-AC31-37175F32CDE4',
-              '767B7ADF-10BA-3D86-AB7E-02816B5B92E9',
-          ]
-          bases=[
-              'http://xdworld.vworld.kr:8080/XDServer/3DData',
-              'https://xdworld.vworld.kr:8080/XDServer/3DData',
-              'https://xdworld.vworld.kr/XDServer/3DData',
-          ]
-          ctx=ssl.create_default_context()
-          report=[]
+          keys=['3XE3C10E-82B7-3E7F-AC31-37175F32CDE4','767B7ADF-10BA-3D86-AB7E-02816B5B92E9']
+          bases=['http://xdworld.vworld.kr:8080/XDServer/3DData','https://xdworld.vworld.kr:8080/XDServer/3DData','https://xdworld.vworld.kr/XDServer/3DData']
+          probes=[]
 
-          def safe_name(s):
-              return ''.join(c if c.isalnum() or c in '._-' else '_' for c in s)[:180]
-
-          def get(url, label):
-              rec={'label':label,'url':url}
-              try:
-                  req=urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 (historical-aerial-research)'})
-                  with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
-                      data=r.read()
-                      rec.update(status=getattr(r,'status',None), final_url=r.geturl(), headers=dict(r.headers), bytes=len(data))
-              except urllib.error.HTTPError as e:
-                  data=e.read()
-                  rec.update(status=e.code, final_url=e.geturl(), headers=dict(e.headers), bytes=len(data), error=str(e))
-              except Exception as e:
-                  data=b''
-                  rec.update(error=repr(e), bytes=0)
-              fn=os.path.join(out, safe_name(label)+'.bin')
-              open(fn,'wb').write(data)
-              open(os.path.join(out,safe_name(label)+'.json'),'w',encoding='utf-8').write(json.dumps(rec,ensure_ascii=False,indent=2,default=str))
-              report.append(rec)
-              print(label, rec.get('status'), rec.get('bytes'), rec.get('error',''))
-              return data,rec
-
+          def add(label,url): probes.append((label,url))
           for bi,base in enumerate(bases):
               for ki,key in enumerate(keys):
-                  params={'Version':'2.0.0.0','Request':'GetCapabilities','Key':key}
-                  get(base+'?'+urllib.parse.urlencode(params), f'cap_b{bi}_k{ki}')
-                  params={'Version':'2.0.0.0','Request':'GetLayerExists','Key':key,'Layer':'T198901','Level':'16','BBOX':','.join(map(str,bbox)),'CheckFlag':'True'}
-                  get(base+'?'+urllib.parse.urlencode(params), f'exists_1989_b{bi}_k{ki}_l16')
+                  add(f'cap_b{bi}_k{ki}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetCapabilities','Key':key}))
+                  add(f'exists_b{bi}_k{ki}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetLayerExists','Key':key,'Layer':'T198901','Level':'16','BBOX':','.join(map(str,bbox)),'CheckFlag':'True'}))
                   for level in (14,15,16):
                       idx=math.floor((lon+180.0)/360.0*(10*(2**level)))
                       idy=math.floor((lat+90.0)/180.0*(5*(2**level)))
-                      params={'Version':'2.0.0.0','Request':'GetLayer','Key':key,'Layer':'T198901','Level':str(level),'IDX':str(idx),'IDY':str(idy)}
-                      get(base+'?'+urllib.parse.urlencode(params), f'layer_1989_b{bi}_k{ki}_l{level}_x{idx}_y{idy}')
+                      add(f'layer_b{bi}_k{ki}_l{level}_x{idx}_y{idy}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetLayer','Key':key,'Layer':'T198901','Level':level,'IDX':idx,'IDY':idy}))
 
           def slippy(lon,lat,z):
               n=2**z
-              x=int((lon+180.0)/360.0*n)
-              y=int((1-math.asinh(math.tan(math.radians(lat)))/math.pi)/2*n)
-              return x,y
-          for z in (16,17,18,19):
+              return int((lon+180)/360*n), int((1-math.asinh(math.tan(math.radians(lat)))/math.pi)/2*n)
+          for z in (15,16,17,18,19):
               x,y=slippy(lon,lat,z)
-              patterns=[
+              paths=[
                   f'https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg',
                   f'https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.png',
                   f'https://xdworld.vworld.kr/2d/T198901/service/{z}/{x}/{y}.jpeg',
@@ -93,23 +66,76 @@ jobs:
                   f'https://xdworld.vworld.kr/2d/T198901/{z}/{x}/{y}.png',
                   f'http://xdworld.vworld.kr:8080/2d/T198901/service/{z}/{x}/{y}.jpeg',
                   f'http://xdworld.vworld.kr:8080/2d/T198901/service/{z}/{x}/{y}.png',
+                  f'https://api.vworld.kr/req/wmts/1.0.0/{keys[0]}/Satellite/{z}/{y}/{x}.jpeg',
+                  f'https://api.vworld.kr/req/wmts/1.0.0/{keys[0]}/T198901/{z}/{y}/{x}.jpeg',
               ]
-              for pi,u in enumerate(patterns):
-                  get(u, f'tile_z{z}_p{pi}_x{x}_y{y}')
+              for pi,url in enumerate(paths): add(f'tile_z{z}_p{pi}_x{x}_y{y}',url)
 
           for level in (14,15,16):
               idx=math.floor((lon+180.0)/360.0*(10*(2**level)))
               idy=math.floor((lat+90.0)/180.0*(5*(2**level)))
               for layer in ('T198901','timeseries'):
                   for ext in ('jpg','jpeg','png'):
-                      for tmpl in (
-                          f'https://xdworld.vworld.kr/3d/{layer}/{level}/{idx}/{idy}.{ext}',
-                          f'https://xdworld.vworld.kr/XDServer/layer/{layer}/{level}/{idx}/{idy}.{ext}',
-                          f'https://xdworld.vworld.kr:8080/XDServer/layer/{layer}/{level}/{idx}/{idy}.{ext}',
-                      ):
-                          get(tmpl, f'node_{layer}_l{level}_x{idx}_y{idy}_{ext}_{abs(hash(tmpl))%100000}')
+                      for root in ('https://xdworld.vworld.kr/3d','https://xdworld.vworld.kr/XDServer/layer','https://xdworld.vworld.kr:8080/XDServer/layer'):
+                          add(f'node_{layer}_l{level}_x{idx}_y{idy}_{ext}_{hashlib.md5(root.encode()).hexdigest()[:5]}',f'{root}/{layer}/{level}/{idx}/{idy}.{ext}')
 
-          open(os.path.join(out,'report.json'),'w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2,default=str))
+          add('ngii_aerial_page','https://map.ngii.go.kr/ms/map/Aerial.do')
+          add('ngii_main','https://map.ngii.go.kr/ms/map/NlipMap.do')
+          add('seoul_map','https://map.seoul.go.kr/smgis2/seoulMap')
+          add('seoul_old_aerial','https://map.seoul.go.kr/smgis2/seoulMap?searchType=oldAerial')
+
+          def safe(label): return re.sub(r'[^A-Za-z0-9_.-]+','_',label)[:170]
+          def fetch(item):
+              label,url=item
+              rec={'label':label,'url':url}
+              try:
+                  r=requests.get(url,timeout=(7,12),allow_redirects=True,headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/127 Safari/537.36'})
+                  data=r.content
+                  rec.update(status=r.status_code,final_url=r.url,bytes=len(data),content_type=r.headers.get('content-type'),headers=dict(r.headers))
+              except Exception as e:
+                  data=b''; rec.update(bytes=0,error=repr(e))
+              stem=safe(label)
+              (out/(stem+'.bin')).write_bytes(data)
+              (out/(stem+'.json')).write_text(json.dumps(rec,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
+              return rec
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+              report=list(ex.map(fetch,probes))
+          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
+          for r in sorted(report,key=lambda x:x.get('bytes',0),reverse=True)[:30]: print(r.get('status'),r.get('bytes'),r.get('content_type'),r['label'],r.get('error',''))
+          PY
+
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          out=Path('out')
+          pages={
+            'ngii_aerial_browser':'https://map.ngii.go.kr/ms/map/Aerial.do',
+            'ngii_main_browser':'https://map.ngii.go.kr/ms/map/NlipMap.do',
+            'seoul_map_browser':'https://map.seoul.go.kr/smgis2/seoulMap',
+          }
+          options=Options()
+          options.add_argument('--headless=new'); options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage')
+          options.add_argument('--window-size=1920,1400'); options.add_argument('--ignore-certificate-errors')
+          options.set_capability('goog:loggingPrefs',{'browser':'ALL','performance':'ALL'})
+          driver=webdriver.Chrome(options=options)
+          try:
+              for name,url in pages.items():
+                  rec={'name':name,'url':url}
+                  try:
+                      driver.get(url); time.sleep(12)
+                      rec.update(final_url=driver.current_url,title=driver.title,ready=driver.execute_script('return document.readyState'),html_bytes=len(driver.page_source.encode('utf-8')))
+                      (out/(name+'.html')).write_text(driver.page_source,encoding='utf-8')
+                      driver.save_screenshot(str(out/(name+'.png')))
+                      (out/(name+'_browserlog.json')).write_text(json.dumps(driver.get_log('browser'),ensure_ascii=False,indent=2),encoding='utf-8')
+                      (out/(name+'_performance.json')).write_text(json.dumps(driver.get_log('performance'),ensure_ascii=False,indent=2),encoding='utf-8')
+                  except Exception as e: rec['error']=repr(e)
+                  (out/(name+'.json')).write_text(json.dumps(rec,ensure_ascii=False,indent=2),encoding='utf-8')
+          finally:
+              driver.quit()
           PY
 
           echo '=== file types ===' > out/file-types.txt
