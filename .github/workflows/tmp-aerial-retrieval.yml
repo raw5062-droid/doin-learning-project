@@ -23,129 +23,137 @@ jobs:
           python-version: '3.12'
       - uses: browser-actions/setup-chrome@v1
       - name: Install browser helper
-        run: pip install --quiet selenium requests pillow
-      - name: Probe imagery services and capture map pages
+        run: pip install --quiet selenium pillow requests
+      - name: Render historical aerial layer
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           mkdir -p out
           python3 - <<'PY'
-          import concurrent.futures, hashlib, json, math, os, re, time
-          from pathlib import Path
-          import requests
-
-          out=Path('out')
-          lon=126.9327033
-          lat=37.4709232
-          bbox=(lon-0.002,lat-0.002,lon+0.002,lat+0.002)
-          keys=['3XE3C10E-82B7-3E7F-AC31-37175F32CDE4','767B7ADF-10BA-3D86-AB7E-02816B5B92E9']
-          bases=['http://xdworld.vworld.kr:8080/XDServer/3DData','https://xdworld.vworld.kr:8080/XDServer/3DData','https://xdworld.vworld.kr/XDServer/3DData']
-          probes=[]
-
-          def add(label,url): probes.append((label,url))
-          for bi,base in enumerate(bases):
-              for ki,key in enumerate(keys):
-                  add(f'cap_b{bi}_k{ki}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetCapabilities','Key':key}))
-                  add(f'exists_b{bi}_k{ki}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetLayerExists','Key':key,'Layer':'T198901','Level':'16','BBOX':','.join(map(str,bbox)),'CheckFlag':'True'}))
-                  for level in (14,15,16):
-                      idx=math.floor((lon+180.0)/360.0*(10*(2**level)))
-                      idy=math.floor((lat+90.0)/180.0*(5*(2**level)))
-                      add(f'layer_b{bi}_k{ki}_l{level}_x{idx}_y{idy}',base+'?'+requests.compat.urlencode({'Version':'2.0.0.0','Request':'GetLayer','Key':key,'Layer':'T198901','Level':level,'IDX':idx,'IDY':idy}))
-
-          def slippy(lon,lat,z):
-              n=2**z
-              return int((lon+180)/360*n), int((1-math.asinh(math.tan(math.radians(lat)))/math.pi)/2*n)
-          for z in (15,16,17,18,19):
-              x,y=slippy(lon,lat,z)
-              paths=[
-                  f'https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg',
-                  f'https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.png',
-                  f'https://xdworld.vworld.kr/2d/T198901/service/{z}/{x}/{y}.jpeg',
-                  f'https://xdworld.vworld.kr/2d/T198901/service/{z}/{x}/{y}.png',
-                  f'https://xdworld.vworld.kr/2d/T198901/{z}/{x}/{y}.jpeg',
-                  f'https://xdworld.vworld.kr/2d/T198901/{z}/{x}/{y}.png',
-                  f'http://xdworld.vworld.kr:8080/2d/T198901/service/{z}/{x}/{y}.jpeg',
-                  f'http://xdworld.vworld.kr:8080/2d/T198901/service/{z}/{x}/{y}.png',
-                  f'https://api.vworld.kr/req/wmts/1.0.0/{keys[0]}/Satellite/{z}/{y}/{x}.jpeg',
-                  f'https://api.vworld.kr/req/wmts/1.0.0/{keys[0]}/T198901/{z}/{y}/{x}.jpeg',
-              ]
-              for pi,url in enumerate(paths): add(f'tile_z{z}_p{pi}_x{x}_y{y}',url)
-
-          for level in (14,15,16):
-              idx=math.floor((lon+180.0)/360.0*(10*(2**level)))
-              idy=math.floor((lat+90.0)/180.0*(5*(2**level)))
-              for layer in ('T198901','timeseries'):
-                  for ext in ('jpg','jpeg','png'):
-                      for root in ('https://xdworld.vworld.kr/3d','https://xdworld.vworld.kr/XDServer/layer','https://xdworld.vworld.kr:8080/XDServer/layer'):
-                          add(f'node_{layer}_l{level}_x{idx}_y{idy}_{ext}_{hashlib.md5(root.encode()).hexdigest()[:5]}',f'{root}/{layer}/{level}/{idx}/{idy}.{ext}')
-
-          add('ngii_aerial_page','https://map.ngii.go.kr/ms/map/Aerial.do')
-          add('ngii_main','https://map.ngii.go.kr/ms/map/NlipMap.do')
-          add('seoul_map','https://map.seoul.go.kr/smgis2/seoulMap')
-          add('seoul_old_aerial','https://map.seoul.go.kr/smgis2/seoulMap?searchType=oldAerial')
-
-          def safe(label): return re.sub(r'[^A-Za-z0-9_.-]+','_',label)[:170]
-          def fetch(item):
-              label,url=item
-              rec={'label':label,'url':url}
-              try:
-                  r=requests.get(url,timeout=(7,12),allow_redirects=True,headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/127 Safari/537.36'})
-                  data=r.content
-                  rec.update(status=r.status_code,final_url=r.url,bytes=len(data),content_type=r.headers.get('content-type'),headers=dict(r.headers))
-              except Exception as e:
-                  data=b''; rec.update(bytes=0,error=repr(e))
-              stem=safe(label)
-              (out/(stem+'.bin')).write_bytes(data)
-              (out/(stem+'.json')).write_text(json.dumps(rec,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
-              return rec
-
-          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
-              report=list(ex.map(fetch,probes))
-          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
-          for r in sorted(report,key=lambda x:x.get('bytes',0),reverse=True)[:30]: print(r.get('status'),r.get('bytes'),r.get('content_type'),r['label'],r.get('error',''))
-          PY
-
-          python3 - <<'PY'
-          import json, os, time
+          import base64, json, time
           from pathlib import Path
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
 
           out=Path('out')
-          pages={
-            'ngii_aerial_browser':'https://map.ngii.go.kr/ms/map/Aerial.do',
-            'ngii_main_browser':'https://map.ngii.go.kr/ms/map/NlipMap.do',
-            'seoul_map_browser':'https://map.seoul.go.kr/smgis2/seoulMap',
-          }
+          lat=37.4709232
+          lon=126.9327033
           options=Options()
-          options.add_argument('--headless=new'); options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage')
-          options.add_argument('--window-size=1920,1400'); options.add_argument('--ignore-certificate-errors')
+          options.add_argument('--headless=new')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          options.add_argument('--window-size=2560,1800')
+          options.add_argument('--ignore-certificate-errors')
           options.set_capability('goog:loggingPrefs',{'browser':'ALL','performance':'ALL'})
           driver=webdriver.Chrome(options=options)
+          driver.set_script_timeout(60)
+          driver.execute_cdp_cmd('Network.enable',{'maxTotalBufferSize':100000000,'maxResourceBufferSize':10000000})
+          summary={'target':{'lat':lat,'lon':lon},'source':'https://map.seoul.go.kr/smgis2/seoulMap'}
           try:
-              for name,url in pages.items():
-                  rec={'name':name,'url':url}
+              driver.get('https://map.seoul.go.kr/smgis2/seoulMap')
+              WebDriverWait(driver,45).until(lambda d: d.execute_script("return typeof M !== 'undefined' && M.map && typeof getFlyMapGallery === 'function'"))
+              time.sleep(8)
+              summary['initial_state']=driver.execute_script("return {center:M.map.getCenter(),zoom:M.map.getZoom(),minZoom:M.map.getMinZoom(),maxZoom:M.map.getMaxZoom(),tilemapUrl:TILEMAP_URL,tilemapGeoserverUrl:TILEMAP_GEOSERVER_URL,flyToc:FLY_MAP_TOC_NM};")
+              result=driver.execute_async_script("""
+                const done=arguments[0];
+                getFlyMapGallery().then(r=>done(JSON.stringify({ok:true,data:r}))).catch(e=>done(JSON.stringify({ok:false,error:String(e)})));
+              """)
+              (out/'gallery_raw_result.txt').write_text(result,encoding='utf-8')
+              wrapper=json.loads(result)
+              if not wrapper.get('ok'):
+                  raise RuntimeError('getFlyMapGallery failed: '+wrapper.get('error','unknown'))
+              gallery=wrapper['data']
+              (out/'gallery.json').write_text(json.dumps(gallery,ensure_ascii=False,indent=2),encoding='utf-8')
+              children=(gallery.get('DATA') or [{}])[0].get('children') or []
+              summary['gallery_count']=len(children)
+              summary['gallery_dataset_names']=[str(x.get('dataset_nm')) for x in children]
+              matches=[x for x in children if str(x.get('dataset_nm')).strip()=='1989']
+              if not matches:
+                  matches=[x for x in children if '1989' in str(x.get('dataset_nm')) or '1989' in str(x)]
+              if not matches:
+                  raise RuntimeError('1989 dataset not found in gallery')
+              selected=matches[0]
+              summary['selected_dataset']=selected
+              driver.execute_script('FLY_MAPGALLERY = arguments[0];',children)
+              map_max=driver.execute_script('return M.map.getMaxZoom();')
+              data_max=int(selected.get('lvl_max') or map_max or 15)
+              zoom=min(int(map_max or 15),data_max)
+              summary['render_zoom']=zoom
+              driver.execute_script("M.map.setView([arguments[0],arguments[1]],arguments[2],{animate:false});",lat,lon,zoom)
+              time.sleep(3)
+              driver.execute_script("changeFlyMap(arguments[0]);",selected['toc_nm'])
+              time.sleep(30)
+              # Save a fully documented screenshot first.
+              driver.save_screenshot(str(out/'1989_full_page.png'))
+              map_el=driver.find_element(By.ID,'map')
+              map_el.screenshot(str(out/'1989_map_with_controls.png'))
+              point=driver.execute_script("var p=M.map.latLngToContainerPoint([arguments[0],arguments[1]]); return {x:p.x,y:p.y,center:M.map.getCenter(),zoom:M.map.getZoom(),size:M.map.getSize()};",lat,lon)
+              summary['target_container_point_before_clean']=point
+              # Hide controls only; do not alter imagery.
+              driver.execute_script("""
+                ['#map_control','#map_moveSeoul','#map_center_division','#mapGradeBtn','#map_susermapSmall','#map_susermapSmall2','#map_selectMap_popup','#maploading','.leaflet-control-zoom'].forEach(sel=>document.querySelectorAll(sel).forEach(el=>el.style.display='none'));
+              """)
+              time.sleep(2)
+              map_el.screenshot(str(out/'1989_map_clean.png'))
+              # Capture one level wider for location context.
+              if zoom>0:
+                  driver.execute_script("M.map.setZoom(arguments[0],{animate:false});",zoom-1)
+                  time.sleep(18)
+                  map_el.screenshot(str(out/'1989_map_context.png'))
+                  summary['context_zoom']=zoom-1
+              # Capture response bodies for WMS imagery tiles where Chrome still retains them.
+              perf=driver.get_log('performance')
+              (out/'performance.json').write_text(json.dumps(perf,ensure_ascii=False,indent=2),encoding='utf-8')
+              responses=[]
+              n=0
+              for entry in perf:
                   try:
-                      driver.get(url); time.sleep(12)
-                      rec.update(final_url=driver.current_url,title=driver.title,ready=driver.execute_script('return document.readyState'),html_bytes=len(driver.page_source.encode('utf-8')))
-                      (out/(name+'.html')).write_text(driver.page_source,encoding='utf-8')
-                      driver.save_screenshot(str(out/(name+'.png')))
-                      (out/(name+'_browserlog.json')).write_text(json.dumps(driver.get_log('browser'),ensure_ascii=False,indent=2),encoding='utf-8')
-                      (out/(name+'_performance.json')).write_text(json.dumps(driver.get_log('performance'),ensure_ascii=False,indent=2),encoding='utf-8')
-                  except Exception as e: rec['error']=repr(e)
-                  (out/(name+'.json')).write_text(json.dumps(rec,ensure_ascii=False,indent=2),encoding='utf-8')
+                      msg=json.loads(entry['message'])['message']
+                  except Exception:
+                      continue
+                  if msg.get('method')!='Network.responseReceived':
+                      continue
+                  p=msg.get('params',{})
+                  r=p.get('response',{})
+                  url=r.get('url','')
+                  mime=r.get('mimeType','')
+                  if ('wms' not in url.lower() and 'tile_map_t2w' not in url.lower()) or not mime.startswith('image/'):
+                      continue
+                  rec={'url':url,'mimeType':mime,'status':r.get('status'),'requestId':p.get('requestId')}
+                  try:
+                      body=driver.execute_cdp_cmd('Network.getResponseBody',{'requestId':p.get('requestId')})
+                      raw=base64.b64decode(body['body']) if body.get('base64Encoded') else body.get('body','').encode('latin1')
+                      ext='png' if 'png' in mime else 'jpg'
+                      (out/f'wms_tile_{n:03d}.{ext}').write_bytes(raw)
+                      rec['bytes']=len(raw); rec['file']=f'wms_tile_{n:03d}.{ext}'; n+=1
+                  except Exception as e:
+                      rec['body_error']=repr(e)
+                  responses.append(rec)
+              (out/'wms_responses.json').write_text(json.dumps(responses,ensure_ascii=False,indent=2),encoding='utf-8')
+              summary['wms_response_count']=len(responses)
+              summary['wms_saved_count']=n
+              (out/'browserlog.json').write_text(json.dumps(driver.get_log('browser'),ensure_ascii=False,indent=2),encoding='utf-8')
+          except Exception as e:
+              summary['error']=repr(e)
+              try:
+                  driver.save_screenshot(str(out/'error_page.png'))
+                  (out/'error_page.html').write_text(driver.page_source,encoding='utf-8')
+                  (out/'browserlog.json').write_text(json.dumps(driver.get_log('browser'),ensure_ascii=False,indent=2),encoding='utf-8')
+                  (out/'performance.json').write_text(json.dumps(driver.get_log('performance'),ensure_ascii=False,indent=2),encoding='utf-8')
+              except Exception:
+                  pass
+              raise
           finally:
+              (out/'summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
               driver.quit()
           PY
-
-          echo '=== file types ===' > out/file-types.txt
-          find out -type f -name '*.bin' -print0 | xargs -0 file >> out/file-types.txt || true
-          echo '=== sizes ===' > out/sizes.txt
-          find out -type f -printf '%s %p\n' | sort -nr >> out/sizes.txt
-      - name: Upload retrieval diagnostics
+      - name: Upload retrieval results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aerial-retrieval-diagnostics
+          name: aerial-1989-render
           path: out/
           if-no-files-found: error
           retention-days: 1
