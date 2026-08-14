@@ -13,18 +13,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download generated narration
+      - name: Inspect full narration endpoint
         run: |
-          curl -L --fail --retry 3 \
+          curl -L --retry 3 -D response_headers.txt \
             'https://www.aidocmaker.com/g0/audio?name=129ba00ff7a1413785ea2f39569dbe43' \
-            -o narration_full.mp3
-          file narration_full.mp3
-          ls -lh narration_full.mp3
-          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 narration_full.mp3
-      - name: Upload narration artifact
+            -o response_body.html
+          file response_body.html
+          wc -c response_body.html
+          head -c 1000 response_body.html || true
+      - name: Upload endpoint response
         uses: actions/upload-artifact@v4
         with:
-          name: narration-full
-          path: narration_full.mp3
+          name: narration-endpoint-response
+          path: |
+            response_body.html
+            response_headers.txt
           if-no-files-found: error
           retention-days: 1
