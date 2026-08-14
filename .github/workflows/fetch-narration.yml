@@ -3,7 +3,7 @@ name: Temporary Stock Video Redirect Check
 on:
   push:
     paths:
-      - '.github/workflows/fetch-narration.yml'
+      - 'stock-trigger.txt'
   workflow_dispatch:
 
 jobs:
