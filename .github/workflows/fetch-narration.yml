@@ -1,4 +1,4 @@
-name: Temporary Stock Video Download
+name: Temporary Extra Stock Redirect Check
 
 on:
   push:
@@ -7,37 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  prepare:
+  inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Install video tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
-      - name: Download and normalize stock clips
+      - name: Inspect Pexels redirects
         run: |
           set -euo pipefail
-          mkdir -p stock
-          make_clip() {
-            name="$1"; url="$2"; seek="$3"
-            curl -L --fail --retry 3 -A 'Mozilla/5.0' "$url" -o "${name}_raw.mp4"
-            ffmpeg -hide_banner -loglevel error -y -ss "$seek" -i "${name}_raw.mp4" -t 8 \
-              -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24,eq=saturation=0.78:contrast=1.08:brightness=-0.025" \
-              -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart "stock/${name}.mp4"
-            rm -f "${name}_raw.mp4"
-          }
-          make_clip phone_alarm 'https://videos.pexels.com/video-files/1190185/1190185-hd_1920_1080_30fps.mp4' 0
-          make_clip man_phone_room 'https://videos.pexels.com/video-files/8212372/8212372-uhd_3840_2160_25fps.mp4' 1
-          make_clip man_phone_street 'https://videos.pexels.com/video-files/7062351/7062351-hd_1080_1920_24fps.mp4' 1
-          make_clip rain_drive 'https://videos.pexels.com/video-files/33509759/14251859_1080_1920_24fps.mp4' 1
-          make_clip phone_notification 'https://videos.pexels.com/video-files/34786856/14748772_3840_2160_50fps.mp4' 0
-          make_clip rain_street 'https://videos.pexels.com/video-files/34796505/14753503_1920_1080_60fps.mp4' 1
-          make_clip wake_phone 'https://videos.pexels.com/video-files/30285726/12982562_3364_1440_30fps.mp4' 1
-          ls -lh stock
-      - name: Upload prepared stock clips
-        uses: actions/upload-artifact@v4
-        with:
-          name: stock-clips
-          path: stock/*.mp4
-          if-no-files-found: error
-          retention-days: 1
+          for id in 19919758 8212368 7062358 7280528 7279738 34796504 16657123 34498310; do
+            echo "===== VIDEO $id ====="
+            curl -sS -A 'Mozilla/5.0' -o /dev/null -D - "https://www.pexels.com/download/video/$id/" | grep -iE '^(HTTP/|location:|content-type:|content-length:)' || true
+          done
