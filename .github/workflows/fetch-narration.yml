@@ -13,20 +13,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Inspect full narration endpoint
+      - name: Download narration chunks
         run: |
-          curl -L --retry 3 -D response_headers.txt \
-            'https://www.aidocmaker.com/g0/audio?name=129ba00ff7a1413785ea2f39569dbe43' \
-            -o response_body.html
-          file response_body.html
-          wc -c response_body.html
-          head -c 1000 response_body.html || true
-      - name: Upload endpoint response
+          set -euo pipefail
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/9d56b461-a213-4043-b199-ddba387d843f.mp3' -o narration_01.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/aa748a72-ac38-4416-b035-6aa436dabd5d.mp3' -o narration_02.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/32e47e54-15fb-4786-a117-9abf25298eb8.mp3' -o narration_03.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/2840b5bb-5fa7-462d-89b5-e16cc032b9ae.mp3' -o narration_04.mp3
+          file narration_*.mp3
+          ls -lh narration_*.mp3
+      - name: Upload narration artifact
         uses: actions/upload-artifact@v4
         with:
-          name: narration-endpoint-response
-          path: |
-            response_body.html
-            response_headers.txt
+          name: narration-chunks
+          path: narration_*.mp3
           if-no-files-found: error
           retention-days: 1
