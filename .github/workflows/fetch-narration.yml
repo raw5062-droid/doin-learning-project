@@ -1,31 +1,19 @@
-name: Temporary Narration Fetch
+name: Temporary Stock Video Redirect Check
 
 on:
   push:
     paths:
       - '.github/workflows/fetch-narration.yml'
-      - 'narration-trigger.txt'
   workflow_dispatch:
 
 jobs:
-  fetch-narration:
+  inspect:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - name: Download narration chunks
+      - name: Inspect Pexels download redirects
         run: |
           set -euo pipefail
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/9d56b461-a213-4043-b199-ddba387d843f.mp3' -o narration_01.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/aa748a72-ac38-4416-b035-6aa436dabd5d.mp3' -o narration_02.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/32e47e54-15fb-4786-a117-9abf25298eb8.mp3' -o narration_03.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/2840b5bb-5fa7-462d-89b5-e16cc032b9ae.mp3' -o narration_04.mp3
-          file narration_*.mp3
-          ls -lh narration_*.mp3
-      - name: Upload narration artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: narration-chunks
-          path: narration_*.mp3
-          if-no-files-found: error
-          retention-days: 1
+          for id in 1190185 8212372 7062351 33509759 34786856 34796505 30285726; do
+            echo "===== VIDEO $id ====="
+            curl -sS -A 'Mozilla/5.0' -o /dev/null -D - "https://www.pexels.com/download/video/$id/" | grep -iE '^(HTTP/|location:|content-type:|content-length:)' || true
+          done
