@@ -1,0 +1,29 @@
+name: Temporary Narration Fetch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fetch-narration.yml'
+      - 'narration-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  fetch-narration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download generated narration
+        run: |
+          curl -L --fail --retry 3 \
+            'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/b76ce515-8188-46f4-8224-f054e2268708.mp3' \
+            -o narration_ai.mp3
+          file narration_ai.mp3
+          ls -lh narration_ai.mp3
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: narration-ai
+          path: narration_ai.mp3
+          if-no-files-found: error
+          retention-days: 1
