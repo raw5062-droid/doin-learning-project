@@ -21,16 +21,12 @@ jobs:
           curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/8bb9b46f-d220-41c9-8a6c-07030e985b55.mp3' -o sample_assets/audio/03.mp3
           curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/58f8250a-03c0-4d92-b887-8c5a4ca1916e.mp3' -o sample_assets/audio/04.mp3
           python3 - <<'PY'
-          import pathlib, urllib.parse, urllib.request
+          import pathlib, time, urllib.parse, urllib.request
           files = [
               'Flannan Island Lighthouse - geograph.org.uk - 882869.jpg',
               'Flannan Isles approaching Eilean Mòr - geograph.org.uk - 3201924.jpg',
               'Flannan Isles, cliffs near the landing stage - geograph.org.uk - 3201903.jpg',
               'Flannan Isles, lighthouse and cliffs - geograph.org.uk - 3206197.jpg',
-              'Flannan Isles, the lighthouse - geograph.org.uk - 3201947.jpg',
-              'Flannan Isles- close-up of the lighthouse (geograph 3201960).jpg',
-              'Flannan Isles- the lighthouse from the sea to the south (geograph 3201899).jpg',
-              'The lighthouse on Eilean Mor of the Flannan Isles - geograph.org.uk - 100454.jpg',
           ]
           out = pathlib.Path('sample_assets/images')
           opener = urllib.request.build_opener()
@@ -41,6 +37,7 @@ jobs:
                   data = r.read()
               (out / f'{i:02d}.jpg').write_bytes(data)
               print(i, name, len(data))
+              time.sleep(2)
           PY
           file sample_assets/audio/* sample_assets/images/*
           ls -lh sample_assets/audio sample_assets/images
