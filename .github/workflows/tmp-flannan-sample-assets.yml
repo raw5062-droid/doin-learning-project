@@ -1,4 +1,4 @@
-name: Temporary Flannan Sample Assets
+name: Temporary Flannan Public Domain Assets
 
 on:
   push:
@@ -12,39 +12,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download narration and licensed images
+      - name: Download public domain map assets
         run: |
           set -euo pipefail
-          mkdir -p sample_assets/audio sample_assets/images
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/41f18422-8992-491d-8daf-9e3cda252aca.mp3' -o sample_assets/audio/01.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/13523375-d542-4ca8-9de1-8e30a96f0c2d.mp3' -o sample_assets/audio/02.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/8bb9b46f-d220-41c9-8a6c-07030e985b55.mp3' -o sample_assets/audio/03.mp3
-          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/58f8250a-03c0-4d92-b887-8c5a4ca1916e.mp3' -o sample_assets/audio/04.mp3
-          python3 - <<'PY'
-          import pathlib, time, urllib.parse, urllib.request
-          files = [
-              'Flannan Island Lighthouse - geograph.org.uk - 882869.jpg',
-              'Flannan Isles approaching Eilean Mòr - geograph.org.uk - 3201924.jpg',
-              'Flannan Isles, cliffs near the landing stage - geograph.org.uk - 3201903.jpg',
-              'Flannan Isles, lighthouse and cliffs - geograph.org.uk - 3206197.jpg',
-          ]
-          out = pathlib.Path('sample_assets/images')
-          opener = urllib.request.build_opener()
-          opener.addheaders = [('User-Agent', 'Mozilla/5.0 FlannanSample/1.0')]
-          for i, name in enumerate(files, 1):
-              url = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/' + urllib.parse.quote(name)
-              with opener.open(url, timeout=60) as r:
-                  data = r.read()
-              (out / f'{i:02d}.jpg').write_bytes(data)
-              print(i, name, len(data))
-              time.sleep(2)
-          PY
-          file sample_assets/audio/* sample_assets/images/*
-          ls -lh sample_assets/audio sample_assets/images
-      - name: Upload sample assets
+          mkdir -p pd_assets
+          curl -L --fail --retry 3 'https://upload.wikimedia.org/wikipedia/commons/0/0e/Flannan_isles.jpg' -o pd_assets/flannan_1898.jpg
+          sleep 2
+          curl -L --fail --retry 3 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Admiralty_Chart_No_3331_Flannan_Isles%2C_Published_1903.jpg/1280px-Admiralty_Chart_No_3331_Flannan_Isles%2C_Published_1903.jpg' -o pd_assets/admiralty_chart_1903.jpg
+          file pd_assets/*
+          ls -lh pd_assets
+      - name: Upload public domain assets
         uses: actions/upload-artifact@v4
         with:
-          name: flannan-sample-assets
-          path: sample_assets
+          name: flannan-extra-pd
+          path: pd_assets
           if-no-files-found: error
           retention-days: 1
