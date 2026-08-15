@@ -1,0 +1,29 @@
+name: Temporary Comic Sample Audio Transfer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-comic-sample-audio.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch-audio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download generated narration
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/ad6ee2ea-0ab1-4c48-974c-6b17c5bfd9ec.mp3' \
+            -o comic_sample_narration.mp3
+          file comic_sample_narration.mp3
+          ls -lh comic_sample_narration.mp3
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: comic-sample-narration
+          path: comic_sample_narration.mp3
+          if-no-files-found: error
+          retention-days: 1
