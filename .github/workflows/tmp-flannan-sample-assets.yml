@@ -1,0 +1,53 @@
+name: Temporary Flannan Sample Assets
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-flannan-sample-assets.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch-assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download narration and licensed images
+        run: |
+          set -euo pipefail
+          mkdir -p sample_assets/audio sample_assets/images
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/41f18422-8992-491d-8daf-9e3cda252aca.mp3' -o sample_assets/audio/01.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/13523375-d542-4ca8-9de1-8e30a96f0c2d.mp3' -o sample_assets/audio/02.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/8bb9b46f-d220-41c9-8a6c-07030e985b55.mp3' -o sample_assets/audio/03.mp3
+          curl -L --fail --retry 3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/58f8250a-03c0-4d92-b887-8c5a4ca1916e.mp3' -o sample_assets/audio/04.mp3
+          python3 - <<'PY'
+          import pathlib, urllib.parse, urllib.request
+          files = [
+              'Flannan Island Lighthouse - geograph.org.uk - 882869.jpg',
+              'Flannan Isles approaching Eilean Mòr - geograph.org.uk - 3201924.jpg',
+              'Flannan Isles, cliffs near the landing stage - geograph.org.uk - 3201903.jpg',
+              'Flannan Isles, lighthouse and cliffs - geograph.org.uk - 3206197.jpg',
+              'Flannan Isles, the lighthouse - geograph.org.uk - 3201947.jpg',
+              'Flannan Isles- close-up of the lighthouse (geograph 3201960).jpg',
+              'Flannan Isles- the lighthouse from the sea to the south (geograph 3201899).jpg',
+              'The lighthouse on Eilean Mor of the Flannan Isles - geograph.org.uk - 100454.jpg',
+          ]
+          out = pathlib.Path('sample_assets/images')
+          opener = urllib.request.build_opener()
+          opener.addheaders = [('User-Agent', 'Mozilla/5.0 FlannanSample/1.0')]
+          for i, name in enumerate(files, 1):
+              url = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/' + urllib.parse.quote(name)
+              with opener.open(url, timeout=60) as r:
+                  data = r.read()
+              (out / f'{i:02d}.jpg').write_bytes(data)
+              print(i, name, len(data))
+          PY
+          file sample_assets/audio/* sample_assets/images/*
+          ls -lh sample_assets/audio sample_assets/images
+      - name: Upload sample assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: flannan-sample-assets
+          path: sample_assets
+          if-no-files-found: error
+          retention-days: 1
